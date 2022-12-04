@@ -101,37 +101,57 @@ void tcp::Server::FromUser(tcp::Client& client) {
  */
 // todo add ensuring read and write processes well
 void tcp::Server::RequestProcessing(tcp::Client& client) {
-  std::string body;
-  char buffer[BUFF_LEN];
+  char buffer[BUFF_LEN]{};
   tcp::NetHandler::Read(client.GetFd(), buffer, BUFF_LEN);
   std::string request = buffer;
   if (request.find("GET /") != std::string::npos) {
     request.erase(0, request.find("GET /") + 4);
     request.erase(request.find(' '), request.size());
     request += ".html";
-    int file_fd = open((config_.locations.at("/") + request).c_str(), O_RDONLY);
-    if (file_fd < 0) {
-      // 404 handling
+    auto body_res = GetBody(request);
+    std::string header = GetHeader(body_res.first.size(), body_res.second);
+    tcp::NetHandler::Write(client.GetFd(), header.c_str(), header.size());
+    tcp::NetHandler::Write(client.GetFd(), body_res.first.c_str(), body_res.first.size());  
+  }
+}
+
+std::pair<std::string, int> tcp::Server::GetBody(const std::string& request) {
+  char buffer[BUFF_LEN]{};
+  std::string body;
+  int status = OK;
+  int file_fd = open((config_.locations.at("/") + request).c_str(), O_RDONLY);
+  if (file_fd < 0) {
+    status = PAGE_NOT_FOUND;
+    if (config_.error_pages_names.find(404) != config_.error_pages_names.end()) {
+      file_fd = open(config_.error_pages_names.at(404).c_str(), O_RDONLY);
+      if (file_fd < 0) {
+        body = "<!DOCTYPE html>\n<html>\n<head>\n<title>be1.ru</title>\n</head>\n<body>\n<p>ERROR 404: Page not found :(</p>\n</body>\n</html>";
+      } else {
+        while (read(file_fd, buffer, BUFF_LEN) > 0) {
+          body.append(buffer);
+        }
+        close(file_fd);
+      }
+    } else {
+      body = "<!DOCTYPE html>\n<html>\n<head>\n<title>be1.ru</title>\n</head>\n<body>\n<p>ERROR 404: Page not found :(</p>\n</body>\n</html>";
     }
-    memset(buffer, '\0', BUFF_LEN);
+  } else {
     while (read(file_fd, buffer, BUFF_LEN) > 0) {
       body.append(buffer);
     }
     close(file_fd);
-    std::string header = GetHeader(body.size(), OK);
-    tcp::NetHandler::Write(client.GetFd(), header.c_str(), header.size());
-    tcp::NetHandler::Write(client.GetFd(), body.c_str(), body.size());  
   }
+  return {body, status};
 }
 
 std::string tcp::Server::GetHeader(size_t content_length, int status) {
-  std::string header = "HTTP/1.1 200 OK\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: 103\r\n\r\n";
+  std::string header = "\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: ";
   if (status == OK) {
-    header = "HTTP/1.1 200 OK\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: ";
+    header = "HTTP/1.1 200 OK" + header;
   } else if (status == PAGE_NOT_FOUND) {
-    header = "HTTP/1.1 404 Not Found\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: ";
+    header = "HTTP/1.1 404 Not Found" + header;
   } else if (status == FORBIDDEN) {
-    header = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: ";
+    header = "HTTP/1.1 403 Forbidden" + header;
   }
   header += std::to_string(content_length) + "\r\n\r\n";
   return header;
