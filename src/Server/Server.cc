@@ -51,7 +51,6 @@ void tcp::Server::ConnectNewUser(int fd) {
   m_fds_[m_fds_counter_++].events = POLLIN;
   std::cout << "new fd  = " << fd << std::endl;
   m_clients_.push_back(Client(fd, &m_fds_[m_fds_counter_ - 1]));
-
   std::cout << "Client has been connected to server. Listening now" << std::endl;
 }
 
@@ -100,32 +99,42 @@ void tcp::Server::FromUser(tcp::Client& client) {
  * Sends a packet of data from DB to user,
  * @param client the one client that has something to get from DB
  */
-void tcp::Server::ToUser(tcp::Client& client) {
-  // std::string body = "<!DOCTYPE html>\n<html>\n<head>\n<title>be1.ru</title>\n</head>\n<body>\n<p>pshel nahooy!</p>\n</body>\n</html>";
-  // const std::string header = "HTTP/1.1 200 OK\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: 103\r\n\r\n";
-  // std::string result = header + body;
-  // bool close_connection = false;
-  // auto status = tcp::NetHandler::Write(client.GetFd(), result.c_str(), result.size());
-  // if (status.second) close_connection = true;
-
-  // // if something went wrong - close both connections
-  // if (close_connection) {
-  //   DisconnectUser_(client);
-  //   m_compress_arr_ = true;
-  // }
-
-  // читать из файла, записывать в буффер, реалочить буффер
-  // если дошел до конца файла, отправляю хедер и боди
-  // если пока не дошел до конца файла, то считываю очередной раз в буфер
-  // и иду дальше не отправляю клиенту ни-ху-я!
-  file_fd_ = open("/Users/padmemur/Desktop/WebServer/static/google.html", O_RDONLY);
+// todo add ensuring read and write processes well
+void tcp::Server::RequestProcessing(tcp::Client& client) {
+  std::string body;
   char buffer[BUFF_LEN];
-  int nread = read(file_fd_, buffer, BUFF_LEN);
-  std::string header = "HTTP/1.1 200 OK\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: ";
-  header += std::to_string(strlen(buffer)) + "\r\n\r\n";
-  tcp::NetHandler::Write(client.GetFd(), header.c_str(), header.size());
-  tcp::NetHandler::Write(client.GetFd(), buffer, nread);
-  close(file_fd_);
+  tcp::NetHandler::Read(client.GetFd(), buffer, BUFF_LEN);
+  std::string request = buffer;
+  if (request.find("GET /") != std::string::npos) {
+    request.erase(0, request.find("GET /") + 4);
+    request.erase(request.find(' '), request.size());
+    request += ".html";
+    int file_fd = open((config_.locations.at("/") + request).c_str(), O_RDONLY);
+    if (file_fd < 0) {
+      // 404 handling
+    }
+    memset(buffer, '\0', BUFF_LEN);
+    while (read(file_fd, buffer, BUFF_LEN) > 0) {
+      body.append(buffer);
+    }
+    close(file_fd);
+    std::string header = GetHeader(body.size(), OK);
+    tcp::NetHandler::Write(client.GetFd(), header.c_str(), header.size());
+    tcp::NetHandler::Write(client.GetFd(), body.c_str(), body.size());  
+  }
+}
+
+std::string tcp::Server::GetHeader(size_t content_length, int status) {
+  std::string header = "HTTP/1.1 200 OK\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: 103\r\n\r\n";
+  if (status == OK) {
+    header = "HTTP/1.1 200 OK\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: ";
+  } else if (status == PAGE_NOT_FOUND) {
+    header = "HTTP/1.1 404 Not Found\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: ";
+  } else if (status == FORBIDDEN) {
+    header = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: ";
+  }
+  header += std::to_string(content_length) + "\r\n\r\n";
+  return header;
 }
 
 /**
@@ -160,8 +169,7 @@ void tcp::Server::EventsProcessing() {
     //   FromUser_(curr_client);
     //   // ready to be read from DB
     } else if (event == POLLIN) {
-      FromUser(curr_client);
-      ToUser(curr_client);
+      RequestProcessing(curr_client);
     }
   }
   std::remove_if(m_clients_.begin(), m_clients_.end(),

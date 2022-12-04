@@ -12,6 +12,13 @@
 
 bool m_shutdown_server_ = false;
 
+enum status {
+  OK,
+  PAGE_NOT_FOUND,
+  FORBIDDEN
+};
+
+
 namespace tcp {
 class Server {
  public:
@@ -25,15 +32,16 @@ class Server {
   void EventsProcessing();
   void AddNewUsers(int listening_fd);
   void CompressArray();
+  void RequestProcessing(Client& client);
   void FromUser(Client& client);
   void ToUser(Client& client);
   void DisconnectUser(Client& client);
   void InitializeListeningPorts();
-  
+  std::string GetHeader(size_t content_length, int status);
+
 
   pollfd m_fds_[200]{};
   int m_fds_counter_;
-  int file_fd_ = -1;
   
   bool m_compress_arr_;
   std::vector<Client> m_clients_;
