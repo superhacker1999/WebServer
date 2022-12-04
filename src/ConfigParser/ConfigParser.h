@@ -8,7 +8,7 @@
 #include <stdexcept>
 // #include "/Users/padmemur/Desktop/WebServer/include/json/single_include/nlohmann/json.hpp"
 #include <iostream>
-#include "../../json.hpp"
+#include "../../includes/json.hpp"
 
 struct WSConfig {
   std::vector<int> listening_ports;
@@ -28,6 +28,7 @@ class ConfigParser {
  private:
   std::vector<int> GetListeningPorts();
   std::map<std::string, std::string> GetLocations();
+  std::map<int, std::string> GetErrorPages();
 
   using json = nlohmann::json;
   json json_obj_;
