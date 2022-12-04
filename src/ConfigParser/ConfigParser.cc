@@ -23,7 +23,7 @@ std::vector<int> ConfigParser::GetListeningPorts() {
   size_t port_count = 0;
   if (json_obj_["http"]["server"].contains("ports")) {
     port_count = json_obj_["http"]["server"]["ports"].size();
-    for (int i = 1; i <= port_count; ++i) {
+    for (size_t i = 1; i <= port_count; ++i) {
       std::string it = "listen" + std::to_string(i);
       ports.push_back(json_obj_["http"]["server"]["ports"][it]);  
     }

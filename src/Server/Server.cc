@@ -9,21 +9,33 @@
  * @param db_ip IP of Database
  * @param db_port port of Database
  */
-tcp::Server::Server(int server_port)
-    : m_fds_counter_(1),
+tcp::Server::Server(const std::string& conf_file)
+    : m_fds_counter_(0),
       m_compress_arr_(false) {
-  m_listening_server_fd_ = tcp::NetHandler::Socket(AF_INET, SOCK_STREAM, 0);
-  tcp::NetHandler::MakeSocketReuseable(m_listening_server_fd_);
-  tcp::NetHandler::SetNonBlockingSocket(m_listening_server_fd_);
-  auto addr = tcp::NetHandler::InitAddr(server_port);
-  tcp::NetHandler::Bind(m_listening_server_fd_, (sockaddr*)&addr, sizeof(addr));
-  tcp::NetHandler::Listen(m_listening_server_fd_, 10);
-  m_fds_[0].fd = m_listening_server_fd_;
-  m_fds_[0].events = POLL_IN;
+  ConfigParser parser;
+  config_ = parser.Parse(conf_file);
+  InitializeListeningPorts();
+}
+
+void tcp::Server::InitializeListeningPorts() {
+  int listening = -1;
+  int i = 0;
+  for (auto it : config_.listening_ports) {
+    listening = tcp::NetHandler::Socket(AF_INET, SOCK_STREAM, 0);
+    tcp::NetHandler::MakeSocketReuseable(listening);
+    tcp::NetHandler::SetNonBlockingSocket(listening);
+    auto addr = tcp::NetHandler::InitAddr(it);
+    tcp::NetHandler::Bind(listening, (sockaddr*)&addr, sizeof(addr));
+    tcp::NetHandler::Listen(listening, 10);
+    m_fds_[i].fd = listening;
+    m_fds_[i++].events = POLL_IN;
+    m_fds_counter_++;
+  }
 }
 
 tcp::Server::~Server() {
-  close(m_listening_server_fd_);
+  for (size_t i = 0; i < config_.listening_ports.size(); ++i)
+    close(m_fds_[i].fd);
   for (auto it : m_clients_) {
     close(it.GetFd());
   }
@@ -34,7 +46,7 @@ tcp::Server::~Server() {
  * create a pair of client's fildes and DB's fildes
  * @param fd fildes of new accepted client
  */
-void tcp::Server::ConnectNewUser_(int fd) {
+void tcp::Server::ConnectNewUser(int fd) {
   m_fds_[m_fds_counter_].fd = fd;
   m_fds_[m_fds_counter_++].events = POLLIN;
   std::cout << "new fd  = " << fd << std::endl;
@@ -48,11 +60,13 @@ void tcp::Server::ConnectNewUser_(int fd) {
  * calls ConnectToDB_() method after accepts
  * incoming request to connect
  */
-void tcp::Server::AddNewUsers_() {
+// to do
+// method should get listening fd that has revent AddNewUsers(int fd)
+void tcp::Server::AddNewUsers(int listening_fd) {
   int new_fd = 0;
   std::cout << "\nGot the request to add new user\n";
   do {
-    new_fd = accept(m_listening_server_fd_, NULL, NULL);
+    new_fd = accept(listening_fd, NULL, NULL);
     if (new_fd < 0) {
       if (errno != EWOULDBLOCK) {
         perror("ERROR: Accept failed ");
@@ -60,46 +74,24 @@ void tcp::Server::AddNewUsers_() {
       }
       break;
     }
-    ConnectNewUser_(new_fd);
+    ConnectNewUser(new_fd);
   } while (new_fd != -1);
 }
-
 
 /**
  * Sends a packet of data from user to DB,
  * calls CreateLog() method if request marked as an SQL request
  * @param client the one client that has request to DB
  */
-void tcp::Server::FromUser_(tcp::Client& client) {
+void tcp::Server::FromUser(tcp::Client& client) {
   (void)client;
-  // char buf[BUFF_LEN]{};
-  // bool close_connection = false;
-  // auto status = tcp::NetHandler::Read(client.GetFd(), buf, BUFF_LEN);
-  // if (status.second) close_connection = true;
-
-  // if (buf[4] == 3 || buf[4] == 22) {
-  //   try {
-  //     m_logger_->CreateLog(buf + 5);
-  //   } catch (std::invalid_argument const& ex) {
-  //     std::cout << ex.what();
-  //   }
-  // }
-
-  // status = tcp::NetHandler::Write(client.GetDBFd(), buf, status.first);
-  // if (status.second) close_connection = true;
-
-  // // if something went wrong - close both connections
-  // if (close_connection) {
-  //   DisconnectUser_(client);
-  //   m_compress_arr_ = true;
-  // }
-
   char buff[BUFF_LEN]{};
   bool close_connection = false;
-  auto status = tcp::NetHandler::Read(client.GetFd(), buff, BUFF_LEN); 
+  auto status = tcp::NetHandler::Read(client.GetFd(), buff, BUFF_LEN);
+  std::cout << buff;
   if (status.second) close_connection = true;
   if (close_connection) {
-    DisconnectUser_(client); 
+    DisconnectUser(client); 
     m_compress_arr_ = true;
   }
 }
@@ -108,7 +100,7 @@ void tcp::Server::FromUser_(tcp::Client& client) {
  * Sends a packet of data from DB to user,
  * @param client the one client that has something to get from DB
  */
-void tcp::Server::ToUser_(tcp::Client& client) {
+void tcp::Server::ToUser(tcp::Client& client) {
   // std::string body = "<!DOCTYPE html>\n<html>\n<head>\n<title>be1.ru</title>\n</head>\n<body>\n<p>pshel nahooy!</p>\n</body>\n</html>";
   // const std::string header = "HTTP/1.1 200 OK\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: 103\r\n\r\n";
   // std::string result = header + body;
@@ -126,7 +118,7 @@ void tcp::Server::ToUser_(tcp::Client& client) {
   // если дошел до конца файла, отправляю хедер и боди
   // если пока не дошел до конца файла, то считываю очередной раз в буфер
   // и иду дальше не отправляю клиенту ни-ху-я!
-  file_fd_ = open("/Users/padmemur/Desktop/WebServer/google.html", O_RDONLY);
+  file_fd_ = open("/Users/padmemur/Desktop/WebServer/static/google.html", O_RDONLY);
   char buffer[BUFF_LEN];
   int nread = read(file_fd_, buffer, BUFF_LEN);
   std::string header = "HTTP/1.1 200 OK\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: ";
@@ -141,7 +133,7 @@ void tcp::Server::ToUser_(tcp::Client& client) {
  * closes client's fildes and the DB's fildes
  * @param client the one client that has to be disconnected
  */
-void tcp::Server::DisconnectUser_(Client& client) {
+void tcp::Server::DisconnectUser(Client& client) {
   close(client.GetFd());
   client.SetFd(-1);
 }
@@ -152,8 +144,9 @@ void tcp::Server::DisconnectUser_(Client& client) {
  * if client has smth calls - FromUser()
  * if DB has smth - calls ToUser()
  */
-void tcp::Server::EventsProcessing_() {
-  if (m_fds_[0].revents == POLLIN) AddNewUsers_();
+void tcp::Server::EventsProcessing() {
+  for (size_t i = 0; i < config_.listening_ports.size(); ++i)
+    if (m_fds_[i].revents == POLLIN) AddNewUsers(m_fds_[i].fd);
   for (Client curr_client : m_clients_) {
     auto event = curr_client.GetEvent();
     // there is no requests from DB neither from client
@@ -161,14 +154,14 @@ void tcp::Server::EventsProcessing_() {
       continue;
       // request to disconnect
     } else if (event == SIGSTOP) {
-      DisconnectUser_(curr_client);
+      DisconnectUser(curr_client);
       // ready to be read from user
     // } else if (event == POLL_IN) {
     //   FromUser_(curr_client);
     //   // ready to be read from DB
     } else if (event == POLLIN) {
-      FromUser_(curr_client);
-      ToUser_(curr_client);
+      FromUser(curr_client);
+      ToUser(curr_client);
     }
   }
   std::remove_if(m_clients_.begin(), m_clients_.end(),
@@ -178,7 +171,7 @@ void tcp::Server::EventsProcessing_() {
 /**
  * Compresses the array of pollfd structures
  */
-void tcp::Server::CompressArray_() {
+void tcp::Server::CompressArray() {
   m_compress_arr_ = false;
   for (int i = 0; i < m_fds_counter_; ++i) {
     if (m_fds_[i].fd == -1) {
@@ -207,9 +200,9 @@ void tcp::Server::HandlingCycle() {
       perror("ERROR: Poll timed out ");
       break;
     }
-    EventsProcessing_();
+    EventsProcessing();
     if (m_compress_arr_) {
-      CompressArray_();
+      CompressArray();
     }
   } while (!m_shutdown_server_);
 }
@@ -223,7 +216,7 @@ void tcp::Server::SigHandler(int signum) {
 int main(int argc, char** argv) {
   if (argc == 2) {
     signal(SIGINT, tcp::Server::SigHandler);
-    tcp::Server server(atoi(argv[1]));
+    tcp::Server server(argv[1]);
     server.HandlingCycle();
   } else {
     std::cout << "You'd better type like this:\n\
