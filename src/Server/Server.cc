@@ -107,6 +107,13 @@ void tcp::Server::RequestProcessing(tcp::Client& client) {
   if (request.find("GET /") != std::string::npos) {
     request.erase(0, request.find("GET /") + 4);
     request.erase(request.find(' '), request.size());
+    //
+    if (request == "/") {
+      request = "/index";
+    }
+    // } else if (request == "/status" && config_.status_page_is_on) {
+    //   request = ""
+    // }
     request += ".html";
     auto body_res = GetBody(request);
     std::string header = GetHeader(body_res.first.size(), body_res.second);

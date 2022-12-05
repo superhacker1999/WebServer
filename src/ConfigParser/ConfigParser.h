@@ -16,6 +16,8 @@ struct WSConfig {
   std::map<std::string, std::string> locations;
   // 1st - errnum, 2nd - path to static html page
   std::map<int, std::string> error_pages_names;
+  // будет ли отдаваться страница статуса localhost/status
+  bool status_page_is_on;
 };
 
 class ConfigParser {
@@ -29,6 +31,7 @@ class ConfigParser {
   std::vector<int> GetListeningPorts();
   std::map<std::string, std::string> GetLocations();
   std::map<int, std::string> GetErrorPages();
+  bool GetStatusPage();
 
   using json = nlohmann::json;
   json json_obj_;

@@ -15,6 +15,7 @@ WSConfig ConfigParser::Parse(const std::string& conf_path) {
   curr_config.listening_ports = GetListeningPorts();
   curr_config.locations = GetLocations();
   curr_config.error_pages_names = GetErrorPages();
+  curr_config.status_page_is_on = GetStatusPage();
   return curr_config;
 }
 
@@ -64,4 +65,14 @@ std::map<int, std::string> ConfigParser::GetErrorPages() {
   // if there no err pages, then server will just return http header
   // with err code to client
   return error_pages;
+}
+
+bool ConfigParser::GetStatusPage() {
+  bool status_page = false;
+  if (json_obj_["http"]["server"].contains("status_page")) {
+    if (json_obj_["http"]["server"]["status_page"] == "on") {
+      status_page = true;
+    }
+  }
+  return status_page;
 }
