@@ -111,7 +111,7 @@ void tcp::Server::RequestProcessing(tcp::Client& client) {
     auto body_res = GetBody(request);
     std::string header = GetHeader(body_res.first.size(), body_res.second);
     tcp::NetHandler::Write(client.GetFd(), header.c_str(), header.size());
-    tcp::NetHandler::Write(client.GetFd(), body_res.first.c_str(), body_res.first.size());  
+    tcp::NetHandler::Write(client.GetFd(), body_res.first.c_str(), body_res.first.size());   
   }
 }
 
