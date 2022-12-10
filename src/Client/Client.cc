@@ -30,3 +30,27 @@ short tcp::Client::GetEvent() {
  * Sets new fd for this client
  */
 void tcp::Client::SetFd(int new_fd) { m_poll_->fd = new_fd; }
+
+void tcp::Client::AddBody(const std::string& response) {
+  m_response_body_ += response;
+}
+
+const std::string tcp::Client::GetBody() {
+  return m_response_body_;
+}
+
+void tcp::Client::SetRequest(const std::string& request) {
+  m_request_ = request;
+}
+
+const std::string tcp::Client::GetRequest() {
+  return m_request_;
+}
+
+void tcp::Client::SetFileFD(int fd) {
+  m_file_fd_ = fd;
+}
+
+int tcp::Client::GetOpenedFileFD() {
+  return m_file_fd_;
+}

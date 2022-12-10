@@ -5,10 +5,12 @@
 #include <vector>
 #include <csignal>
 #include <fstream>
+#include <queue>
 
 #include "../Client/Client.h"
 #include "../NetHandler/NetHandler.h"
 #include "../ConfigParser/ConfigParser.h"
+#include "../RequestHandler/RequestHandler.h"
 
 bool m_shutdown_server_ = false;
 
@@ -46,6 +48,7 @@ class Server {
   
   bool m_compress_arr_;
   std::vector<Client> m_clients_;
+  std::queue<Client*> m_request_queue;
 
   WSConfig config_;
 };  // class Server

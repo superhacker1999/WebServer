@@ -101,24 +101,42 @@ void tcp::Server::FromUser(tcp::Client& client) {
  */
 // todo add ensuring read and write processes well
 void tcp::Server::RequestProcessing(tcp::Client& client) {
+  // char buffer[BUFF_LEN]{};
+  // tcp::NetHandler::Read(client.GetFd(), buffer, BUFF_LEN);
+  // std::string request = buffer;
+  // if (request.find("GET /") != std::string::npos) {
+  //   request.erase(0, request.find("GET /") + 4);
+  //   request.erase(request.find(' '), request.size());
+  //   //
+  //   if (request == "/") {
+  //     request = "/index";
+  //   }
+  //   // } else if (request == "/status" && config_.status_page_is_on) {
+  //   //   request = ""
+  //   // }
+  //   request += ".html";
+  //   auto body_res = GetBody(request);
+  //   std::string header = GetHeader(body_res.first.size(), body_res.second);
+  //   tcp::NetHandler::Write(client.GetFd(), header.c_str(), header.size());
+  //   tcp::NetHandler::Write(client.GetFd(), body_res.first.c_str(), body_res.first.size());   
+  // }
+
+  // читаем запрос от клиента, записываем в клиента, передаем его в RequestHandler
   char buffer[BUFF_LEN]{};
   tcp::NetHandler::Read(client.GetFd(), buffer, BUFF_LEN);
-  std::string request = buffer;
-  if (request.find("GET /") != std::string::npos) {
-    request.erase(0, request.find("GET /") + 4);
-    request.erase(request.find(' '), request.size());
-    //
-    if (request == "/") {
-      request = "/index";
-    }
-    // } else if (request == "/status" && config_.status_page_is_on) {
-    //   request = ""
-    // }
-    request += ".html";
-    auto body_res = GetBody(request);
-    std::string header = GetHeader(body_res.first.size(), body_res.second);
+  client.SetRequest(buffer);
+  int status = http::RequestHandler::ProcessRequest(client, config_);
+  if (status == OK) {
+    std::string header = GetHeader(client.GetBody().size(), OK);
     tcp::NetHandler::Write(client.GetFd(), header.c_str(), header.size());
-    tcp::NetHandler::Write(client.GetFd(), body_res.first.c_str(), body_res.first.size());   
+    tcp::NetHandler::Write(client.GetFd(), client.GetBody().c_str(), client.GetBody().size()); 
+  } else if (status == NOT_FOUND) {
+    std::string header = GetHeader(client.GetBody().size(), PAGE_NOT_FOUND);
+    tcp::NetHandler::Write(client.GetFd(), header.c_str(), header.size());
+    tcp::NetHandler::Write(client.GetFd(), client.GetBody().c_str(), client.GetBody().size()); 
+  } else {
+    // если не все прочитали запихиваем клиента снова в очередь
+    m_request_queue.push(&client);
   }
 }
 
@@ -196,9 +214,11 @@ void tcp::Server::EventsProcessing() {
     //   FromUser_(curr_client);
     //   // ready to be read from DB
     } else if (event == POLLIN) {
-      RequestProcessing(curr_client);
+      m_request_queue.push(&curr_client);
     }
   }
+  RequestProcessing(*m_request_queue.front());
+  m_request_queue.pop();
   std::remove_if(m_clients_.begin(), m_clients_.end(),
                  [](Client client) { return client.GetFd() == -1; });
 }

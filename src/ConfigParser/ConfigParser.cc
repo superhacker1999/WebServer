@@ -29,7 +29,7 @@ std::vector<int> ConfigParser::GetListeningPorts() {
       ports.push_back(json_obj_["http"]["server"]["ports"][it]);  
     }
   } else {
-    std::cout << "You havent type port in config, so I'll use :80 by default";
+    std::cout << "There is no listening port in config, so I'll use :80 by default";
     ports.push_back(80);
   }
   return ports;
