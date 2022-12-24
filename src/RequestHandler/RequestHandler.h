@@ -7,11 +7,11 @@
 #include <iostream>
 #include <fcntl.h>
 
-enum status {
-  OK,
-  OK_NEED_NEXT,
-  NOT_FOUND,
-  BAD_REQUEST
+enum request_status {
+  RS_OK,
+  RS_OK_NEED_NEXT,
+  RS_NOT_FOUND,
+  RS_BAD_REQUEST
 };
 
 constexpr char def_404[] = "<!DOCTYPE html>\n<html>\n\

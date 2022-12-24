@@ -101,73 +101,59 @@ void tcp::Server::FromUser(tcp::Client& client) {
  */
 // todo add ensuring read and write processes well
 void tcp::Server::RequestProcessing(tcp::Client& client) {
-  // char buffer[BUFF_LEN]{};
-  // tcp::NetHandler::Read(client.GetFd(), buffer, BUFF_LEN);
-  // std::string request = buffer;
-  // if (request.find("GET /") != std::string::npos) {
-  //   request.erase(0, request.find("GET /") + 4);
-  //   request.erase(request.find(' '), request.size());
-  //   //
-  //   if (request == "/") {
-  //     request = "/index";
-  //   }
-  //   // } else if (request == "/status" && config_.status_page_is_on) {
-  //   //   request = ""
-  //   // }
-  //   request += ".html";
-  //   auto body_res = GetBody(request);
-  //   std::string header = GetHeader(body_res.first.size(), body_res.second);
-  //   tcp::NetHandler::Write(client.GetFd(), header.c_str(), header.size());
-  //   tcp::NetHandler::Write(client.GetFd(), body_res.first.c_str(), body_res.first.size());   
-  // }
-
   // читаем запрос от клиента, записываем в клиента, передаем его в RequestHandler
   char buffer[BUFF_LEN]{};
-  tcp::NetHandler::Read(client.GetFd(), buffer, BUFF_LEN);
-  client.SetRequest(buffer);
+  if (client.GetRequest().empty()) {
+    tcp::NetHandler::Read(client.GetFd(), buffer, BUFF_LEN);
+    client.SetRequest(buffer);
+  }
+  std::cout << "read request from user with prev fd\n";
   int status = http::RequestHandler::ProcessRequest(client, config_);
-  if (status == OK) {
+  if (status == RS_OK) {
+    std::cout << "processed, page was given to the client with fd = " << client.GetFd() << std::endl;
     std::string header = GetHeader(client.GetBody().size(), OK);
     tcp::NetHandler::Write(client.GetFd(), header.c_str(), header.size());
     tcp::NetHandler::Write(client.GetFd(), client.GetBody().c_str(), client.GetBody().size()); 
-  } else if (status == NOT_FOUND) {
+  } else if (status == RS_NOT_FOUND) {
+    std::cout << "page not found\n";
     std::string header = GetHeader(client.GetBody().size(), PAGE_NOT_FOUND);
     tcp::NetHandler::Write(client.GetFd(), header.c_str(), header.size());
     tcp::NetHandler::Write(client.GetFd(), client.GetBody().c_str(), client.GetBody().size()); 
-  } else {
+  } else if (status == RS_OK_NEED_NEXT) {
     // если не все прочитали запихиваем клиента снова в очередь
+    std::cout << "something left in file, waiting for the next iteration of processing this client fd = " << client.GetFd() << std::endl;
     m_request_queue.push(&client);
   }
 }
 
-std::pair<std::string, int> tcp::Server::GetBody(const std::string& request) {
-  char buffer[BUFF_LEN]{};
-  std::string body;
-  int status = OK;
-  int file_fd = open((config_.locations.at("/") + request).c_str(), O_RDONLY);
-  if (file_fd < 0) {
-    status = PAGE_NOT_FOUND;
-    if (config_.error_pages_names.find(404) != config_.error_pages_names.end()) {
-      file_fd = open(config_.error_pages_names.at(404).c_str(), O_RDONLY);
-      if (file_fd < 0) {
-        body = "<!DOCTYPE html>\n<html>\n<head>\n<title>be1.ru</title>\n</head>\n<body>\n<p>ERROR 404: Page not found :(</p>\n</body>\n</html>";
-      } else {
-        while (read(file_fd, buffer, BUFF_LEN) > 0) {
-          body.append(buffer);
-        }
-        close(file_fd);
-      }
-    } else {
-      body = "<!DOCTYPE html>\n<html>\n<head>\n<title>be1.ru</title>\n</head>\n<body>\n<p>ERROR 404: Page not found :(</p>\n</body>\n</html>";
-    }
-  } else {
-    while (read(file_fd, buffer, BUFF_LEN) > 0) {
-      body.append(buffer);
-    }
-    close(file_fd);
-  }
-  return {body, status};
-}
+// std::pair<std::string, int> tcp::Server::GetBody(const std::string& request) {
+//   char buffer[BUFF_LEN]{};
+//   std::string body;
+//   int status = OK;
+//   int file_fd = open((config_.locations.at("/") + request).c_str(), O_RDONLY);
+//   if (file_fd < 0) {
+//     status = PAGE_NOT_FOUND;
+//     if (config_.error_pages_names.find(404) != config_.error_pages_names.end()) {
+//       file_fd = open(config_.error_pages_names.at(404).c_str(), O_RDONLY);
+//       if (file_fd < 0) {
+//         body = "<!DOCTYPE html>\n<html>\n<head>\n<title>be1.ru</title>\n</head>\n<body>\n<p>ERROR 404: Page not found :(</p>\n</body>\n</html>";
+//       } else {
+//         while (read(file_fd, buffer, BUFF_LEN) > 0) {
+//           body.append(buffer);
+//         }
+//         close(file_fd);
+//       }
+//     } else {
+//       body = "<!DOCTYPE html>\n<html>\n<head>\n<title>be1.ru</title>\n</head>\n<body>\n<p>ERROR 404: Page not found :(</p>\n</body>\n</html>";
+//     }
+//   } else {
+//     while (read(file_fd, buffer, BUFF_LEN) > 0) {
+//       body.append(buffer);
+//     }
+//     close(file_fd);
+//   }
+//   return {body, status};
+// }
 
 std::string tcp::Server::GetHeader(size_t content_length, int status) {
   std::string header = "\r\nContent-Type: text/html;\r\ncharset=UTF-8\r\nContent-Length: ";
@@ -201,7 +187,7 @@ void tcp::Server::DisconnectUser(Client& client) {
 void tcp::Server::EventsProcessing() {
   for (size_t i = 0; i < config_.listening_ports.size(); ++i)
     if (m_fds_[i].revents == POLLIN) AddNewUsers(m_fds_[i].fd);
-  for (Client curr_client : m_clients_) {
+  for (auto &curr_client : m_clients_) {
     auto event = curr_client.GetEvent();
     // there is no requests from DB neither from client
     if (event == 0) {
@@ -214,11 +200,16 @@ void tcp::Server::EventsProcessing() {
     //   FromUser_(curr_client);
     //   // ready to be read from DB
     } else if (event == POLLIN) {
-      m_request_queue.push(&curr_client);
+      std::cout << "request for page from client with fd = " << curr_client.GetFd() << std::endl;
+      //m_request_queue.push(&curr_client);
+      RequestProcessing(curr_client);
     }
   }
-  RequestProcessing(*m_request_queue.front());
-  m_request_queue.pop();
+  // if (!m_request_queue.empty()) {
+  //   std::cout << "there is something in queue, starting to process the request from client with fd = " << m_request_queue.front()->GetFd() << std::endl;
+  //   RequestProcessing(*m_request_queue.front());
+  //   m_request_queue.pop();
+  // }
   std::remove_if(m_clients_.begin(), m_clients_.end(),
                  [](Client client) { return client.GetFd() == -1; });
 }
@@ -248,6 +239,7 @@ void tcp::Server::HandlingCycle() {
   do {
     // setting poll timeout to infinite
     status = poll(m_fds_, m_fds_counter_, -1);
+    std::cout << "poll poimal event\n";
     if (status < 0) {
       perror("ERROR: Poll fails while waiting for the request ");
       break;

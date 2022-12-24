@@ -40,7 +40,7 @@ class Server {
   void DisconnectUser(Client& client);
   void InitializeListeningPorts();
   std::string GetHeader(size_t content_length, int status);
-  std::pair<std::string, int> GetBody(const std::string& request);
+  // std::pair<std::string, int> GetBody(const std::string& request);
 
 
   pollfd m_fds_[200]{};

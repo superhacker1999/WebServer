@@ -11,10 +11,12 @@
 // если все, необходимо подготовить хедер и отпрваить
 // если не все, закинуть клиента в очередь для дальнешей обработки
 int http::RequestHandler::ProcessRequest(tcp::Client& curr_client, const WSConfig& cfg) {
-  int file_fd, status = OK;
+  std::cout << "starting to process request from client with fd = " << curr_client.GetFd() << std::endl;
+  int file_fd, status = RS_OK;
   char buffer[BUFF_LEN]{};
   // запрос верный, нужно открыть под него файл
   if (curr_client.GetRequest().compare(9, 4, "GET /")) {
+    std::cout << "request is ok, starting to process\n";
     std::string request = curr_client.GetRequest();
     request.erase(0, request.find("GET /") + 4);
     request.erase(request.find(' '), request.size());
@@ -27,19 +29,26 @@ int http::RequestHandler::ProcessRequest(tcp::Client& curr_client, const WSConfi
       // возвращаем 404
       if (file_fd < 0) {
         curr_client.AddBody(Get404(cfg));
-        status = NOT_FOUND;
+        status = RS_NOT_FOUND;
       // если открылся, читаем BUFF_LEN символов
       } else {
         status = read(file_fd, buffer, BUFF_LEN);
         // если прочли EOF нужно:
         // отчистить запрос, закрыть fd, вернуть OK
         if (status == 0) {
-          status = OK;
+          status = RS_OK;
           close(file_fd);
+          curr_client.SetFileFD(-1);
           curr_client.SetRequest("");
+        } else if (status < (int)BUFF_LEN) {
+          status = RS_OK;
+          close(file_fd);
+          curr_client.AddBody(buffer);
+          curr_client.SetRequest("");
+          curr_client.SetFileFD(-1);
         } else {
           curr_client.AddBody(buffer);
-          status = OK_NEED_NEXT;
+          status = RS_OK_NEED_NEXT;
           curr_client.SetFileFD(file_fd);
         }
       }
@@ -50,16 +59,23 @@ int http::RequestHandler::ProcessRequest(tcp::Client& curr_client, const WSConfi
       // если прочли EOF нужно:
       // отчистить запрос, закрыть fd, вернуть OK
       if (status == 0) {
-        status = OK;
+        status = RS_OK;
         close(file_fd);
         curr_client.SetRequest("");
+        curr_client.SetFileFD(-1);
+      } else if (status < (int)BUFF_LEN) {
+          status = RS_OK;
+          close(file_fd);
+          curr_client.AddBody(buffer);
+          curr_client.SetRequest("");
+          curr_client.SetFileFD(-1);
       } else {
         curr_client.AddBody(buffer);
-        status = OK_NEED_NEXT;
+        status = RS_OK_NEED_NEXT;
       }
     }
   } else {
-    status = BAD_REQUEST;
+    status = RS_BAD_REQUEST;
   }
   return status;
 }

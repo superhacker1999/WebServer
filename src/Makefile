@@ -1,5 +1,5 @@
 .PHONY: clean server_build server
-SRC_SERVER=Server/Server.cc NetHandler/NetHandler.cc Client/Client.cc ConfigParser/ConfigParser.cc
+SRC_SERVER=Server/Server.cc NetHandler/NetHandler.cc Client/Client.cc ConfigParser/ConfigParser.cc RequestHandler/RequestHandler.cc
 CC=gcc
 FLAGS=-lstdc++ -Wall -Werror -Wextra
 CONF=../ws.conf

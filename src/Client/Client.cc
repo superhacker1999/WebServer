@@ -9,7 +9,8 @@
  */
 tcp::Client::Client(int own_fd,  pollfd* client_poll)
     : m_fd_(own_fd),
-      m_poll_(client_poll) {}
+      m_poll_(client_poll),
+      m_file_fd_(-1) {}
 
 tcp::Client::~Client() {}
 
